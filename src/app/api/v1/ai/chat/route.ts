@@ -5,7 +5,7 @@ import { createAuditLog } from '@/lib/audit';
 import { rateLimit } from '@/lib/rate-limit';
 import { successResponse, errorResponse } from '@/lib/api';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {

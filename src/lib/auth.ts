@@ -1,7 +1,4 @@
 import { db } from '@/lib/db';
-import crypto from 'crypto';
-
-// Password hashing with bcryptjs
 import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = 12;
@@ -14,13 +11,17 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-// JWT token generation
+// JWT token generation using Web Crypto (Edge compatible)
 export function generateToken(): string {
-  return crypto.randomBytes(32).toString('hex');
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function generateRefreshToken(): string {
-  return crypto.randomBytes(64).toString('hex');
+  const array = new Uint8Array(64);
+  crypto.getRandomValues(array);
+  return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Session creation
@@ -45,7 +46,9 @@ export async function createSession(userId: string, userAgent?: string, ipAddres
 
 // Email verification token
 export async function createEmailVerificationToken(email: string) {
-  const token = crypto.randomBytes(32).toString('hex');
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  const token = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
   return db.emailVerificationToken.create({
@@ -55,7 +58,9 @@ export async function createEmailVerificationToken(email: string) {
 
 // Password reset token
 export async function createPasswordResetToken(email: string) {
-  const token = crypto.randomBytes(32).toString('hex');
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  const token = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
   return db.passwordResetToken.create({

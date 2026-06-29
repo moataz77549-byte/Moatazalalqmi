@@ -78,3 +78,9 @@ export function getProviderHealth(provider: ProviderType): HealthStatus | null {
 export function getAllProviderHealth(): HealthStatus[] {
   return Array.from(healthRecords.values()).map(r => r.status);
 }
+
+export function isProviderAvailable(provider: ProviderType): boolean {
+  const health = getProviderHealth(provider);
+  if (!health) return true; // Unknown = assume available
+  return health.status === 'CONNECTED' || health.status === 'RATE_LIMITED';
+}

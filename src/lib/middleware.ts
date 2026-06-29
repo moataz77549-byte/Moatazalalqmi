@@ -27,7 +27,7 @@ export async function getAuthUser(request: NextRequest): Promise<AuthenticatedUs
 
   // API key authentication (format: mz_xxx)
   if (token.startsWith('mz_')) {
-    const keyHash = hashApiKey(token);
+    const keyHash = await hashApiKey(token);
     const apiKey = await db.apiKey.findUnique({
       where: { keyHash },
       include: { user: true },

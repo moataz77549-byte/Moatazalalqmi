@@ -1,7 +1,7 @@
 {
   "name": "moataz-ai",
   "version": "1.0.0",
-  "description": "Moataz AI \u2014 Enterprise AI Operating System",
+  "description": "Moataz AI — Enterprise AI Operating System",
   "private": true,
   "author": "Moataz AI Team",
   "license": "UNLICENSED",
@@ -74,6 +74,7 @@
     "react-resizable-panels": "^3.0.3",
     "react-syntax-highlighter": "^15.6.1",
     "recharts": "^2.15.4",
+    "redis": "^6.0.1",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
@@ -97,9 +98,9 @@
     "eslint": "^9",
     "eslint-config-next": "^16.1.1",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "tw-animate-css": "^1.3.5",
-    "typescript": "^5",
-    "tsx": "^4.19.0"
+    "typescript": "^5"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

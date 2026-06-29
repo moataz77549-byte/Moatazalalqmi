@@ -1,45 +1,58 @@
-import crypto from 'crypto';
+/**
+ * Moataz AI — Secure Key Vault
+ * Uses Web Crypto API for compatibility with both Node.js and Edge Runtime.
+ */
 
-// In production, these should be loaded from a real secrets manager (AWS KMS, HashiCorp Vault, etc.)
-const MASTER_KEY = process.env.ENCRYPTION_MASTER_KEY || 'moataz-ai-dev-master-key-change-in-production-32b!';
+const MASTER_KEY_STR = process.env.ENCRYPTION_MASTER_KEY || 'moataz-ai-dev-master-key-change-in-production-32b!';
 
-function getMasterKey(): Buffer {
-  // Derive a 32-byte key from the master key string
-  return crypto.createHash('sha256').update(MASTER_KEY).digest();
+async function getMasterKey(): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const keyData = enc.encode(MASTER_KEY_STR);
+  const hash = await crypto.subtle.digest('SHA-256', keyData);
+  return crypto.subtle.importKey(
+    'raw',
+    hash,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
 }
 
-const ALGORITHM = 'aes-256-gcm';
+export async function encryptApiKey(plaintext: string): Promise<string> {
+  const key = await getMasterKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const encodedPlaintext = enc.encode(plaintext);
 
-export function encryptApiKey(plaintext: string): string {
-  const key = getMasterKey();
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encodedPlaintext
+  );
 
-  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
+  const encryptedArray = new Uint8Array(encrypted);
+  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+  const encryptedHex = Array.from(encryptedArray).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  const authTag = cipher.getAuthTag();
-
-  // Format: iv:authTag:encrypted
-  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  return `${ivHex}:${encryptedHex}`;
 }
 
-export function decryptApiKey(encrypted: string): string {
-  const key = getMasterKey();
-  const parts = encrypted.split(':');
-  if (parts.length !== 3) throw new Error('Invalid encrypted key format');
+export async function decryptApiKey(encrypted: string): Promise<string> {
+  const key = await getMasterKey();
+  const [ivHex, encryptedHex] = encrypted.split(':');
+  if (!ivHex || !encryptedHex) throw new Error('Invalid encrypted key format');
 
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const encryptedData = parts[2];
+  const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const encryptedArray = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encryptedArray
+  );
 
-  let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
+  const dec = new TextDecoder();
+  return dec.decode(decrypted);
 }
 
 export function maskApiKey(key: string): string {
@@ -47,22 +60,22 @@ export function maskApiKey(key: string): string {
   return key.substring(0, 4) + '****' + key.substring(key.length - 4);
 }
 
-export function generateApiKey(): { key: string; hash: string; prefix: string } {
-  // Generate a random API key
-  const random = crypto.randomBytes(24).toString('hex');
-  const key = `mz_${random}`;
+export async function generateApiKey(): Promise<{ key: string; hash: string; prefix: string }> {
+  const random = crypto.getRandomValues(new Uint8Array(24));
+  const randomHex = Array.from(random).map(b => b.toString(16).padStart(2, '0')).join('');
+  const key = `mz_${randomHex}`;
 
-  // Hash for storage (never store plaintext)
-  const hash = crypto.createHash('sha256').update(key).digest('hex');
-
-  // Prefix for identification
+  const hash = await hashApiKey(key);
   const prefix = key.substring(0, 12);
 
   return { key, hash, prefix };
 }
 
-export function hashApiKey(key: string): string {
-  return crypto.createHash('sha256').update(key).digest('hex');
+export async function hashApiKey(key: string): Promise<string> {
+  const enc = new TextEncoder();
+  const data = enc.encode(key);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function validateApiKeyFormat(key: string): boolean {
