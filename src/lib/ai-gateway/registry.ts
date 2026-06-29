@@ -43,10 +43,6 @@ class ProviderRegistry {
     this.initialized = true;
   }
 
-  /**
-   * Register a custom driver instance for a provider type, replacing any
-   * existing builtin driver. Useful for tests and plugin providers.
-   */
   registerDriver(type: ProviderType, driver: ProviderDriver): void {
     this.registerBuiltins();
     this.drivers.set(type, driver);
@@ -61,49 +57,90 @@ class ProviderRegistry {
     this.registerBuiltins();
     const driver = this.drivers.get(config.type);
     if (!driver) {
-      throw new Error(`Unknown provider type: ${config.type}`);
+      console.warn(`[Registry] Unknown provider type: ${config.type}`);
+      return;
     }
-    await driver.initialize(config);
-    this.configs.set(config.type, config);
+    try {
+      await driver.initialize(config);
+      this.configs.set(config.type, config);
+    } catch (error) {
+      console.error(`[Registry] Failed to initialize ${config.type}:`, error);
+    }
   }
 
   /**
-   * Load all active providers for an organization from the database and
-   * initialize their drivers. Failures for individual providers are
-   * logged but do not abort the whole load.
+   * Enterprise Load Logic:
+   * 1. Scan Database (Priority 1)
+   * 2. Fallback to Environment Variables (Priority 2)
+   * 3. Gracefully skip unavailable providers
    */
-  async loadFromDatabase(organizationId: string): Promise<void> {
+  async loadActiveProviders(organizationId: string): Promise<void> {
     this.registerBuiltins();
+    console.log(`[Registry] Loading providers for organization: ${organizationId}`);
+
+    const envMap: Record<ProviderType, string | undefined> = {
+      OPENAI: process.env.OPENAI_API_KEY,
+      GEMINI: process.env.GEMINI_API_KEY,
+      ANTHROPIC: process.env.ANTHROPIC_API_KEY,
+      OPENROUTER: process.env.OPENROUTER_API_KEY,
+      GROQ: process.env.GROQ_API_KEY,
+      DEEPSEEK: process.env.DEEPSEEK_API_KEY,
+      NVIDIA_NIM: process.env.NVIDIA_API_KEY,
+      HUGGING_FACE: process.env.HUGGINGFACE_API_KEY,
+      COHERE: process.env.COHERE_API_KEY,
+      MISTRAL: process.env.MISTRAL_API_KEY,
+      AZURE_OPENAI: process.env.AZURE_OPENAI_API_KEY,
+      OLLAMA: process.env.OLLAMA_BASE_URL,
+      CUSTOM: process.env.OPENAI_COMPATIBLE_API_KEY,
+    };
 
     try {
-      const providers = await db.provider.findMany({
-        where: { organizationId, isActive: true },
-        include: { models: true },
+      // Get all providers from DB
+      const dbProviders = await db.provider.findMany({
+        where: { organizationId },
+        orderBy: { priority: 'asc' }
       });
 
-      for (const provider of providers) {
-        try {
-          const config: ProviderConfig = {
-            type: provider.type as ProviderType,
-            name: provider.name,
-            apiKey: provider.apiKey || undefined, // In production, decrypt this
-            baseUrl: provider.baseUrl || undefined,
-            organizationId: provider.organizationId,
-            isActive: provider.isActive,
-            priority: 0,
-            config: provider.config ? JSON.parse(provider.config) : undefined,
-          };
+      const processedTypes = new Set<ProviderType>();
 
-          await this.initializeProvider(config);
-        } catch (error) {
-          console.warn(
-            `Failed to initialize provider ${provider.name} (${provider.type}):`,
-            error
-          );
+      // 1. Process Database Providers
+      for (const p of dbProviders) {
+        processedTypes.add(p.type as ProviderType);
+        if (!p.isActive) continue;
+
+        const apiKey = p.apiKey || envMap[p.type as ProviderType];
+        if (!apiKey && p.type !== 'OLLAMA') continue;
+
+        await this.initializeProvider({
+          type: p.type as ProviderType,
+          name: p.name,
+          apiKey: apiKey || undefined,
+          baseUrl: p.baseUrl || undefined,
+          organizationId: p.organizationId,
+          isActive: p.isActive,
+          priority: p.priority,
+          config: p.config as any,
+        });
+      }
+
+      // 2. Process Environment Fallbacks (only if not in DB)
+      for (const [type, key] of Object.entries(envMap)) {
+        const pType = type as ProviderType;
+        if (processedTypes.has(pType)) continue;
+
+        if (key && key.length > 0) {
+          await this.initializeProvider({
+            type: pType,
+            name: pType.charAt(0) + pType.slice(1).toLowerCase(),
+            apiKey: key,
+            organizationId,
+            isActive: true,
+            priority: 10, // Lower priority for env fallbacks
+          });
         }
       }
     } catch (error) {
-      console.warn('Failed to load providers from database:', error);
+      console.error('[Registry] Critical failure loading providers:', error);
     }
   }
 
@@ -126,7 +163,7 @@ class ProviderRegistry {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class ModelRegistry {
-  private models: Map<string, ModelInfo> = new Map(); // key: `${provider}:${modelId}`
+  private models: Map<string, ModelInfo> = new Map();
   private providerModels: Map<ProviderType, ModelInfo[]> = new Map();
 
   registerModel(model: ModelInfo): void {
@@ -169,46 +206,14 @@ class ModelRegistry {
           this.registerModel(model);
         }
       } catch (error) {
-        console.warn(`Failed to load models for ${providerType}:`, error);
+        // Non-fatal: just means this specific provider's models won't be in the registry
       }
     }
   }
-
-  filterModels(criteria: {
-    supportsVision?: boolean;
-    supportsStreaming?: boolean;
-    supportsToolCalling?: boolean;
-    supportsJsonMode?: boolean;
-    supportsThinking?: boolean;
-    minContextWindow?: number;
-    provider?: ProviderType;
-    status?: ModelInfo['status'];
-  }): ModelInfo[] {
-    return this.getAllModels().filter((m) => {
-      if (criteria.supportsVision !== undefined && m.supportsVision !== criteria.supportsVision) return false;
-      if (criteria.supportsStreaming !== undefined && m.supportsStreaming !== criteria.supportsStreaming) return false;
-      if (criteria.supportsToolCalling !== undefined && m.supportsToolCalling !== criteria.supportsToolCalling) return false;
-      if (criteria.supportsJsonMode !== undefined && m.supportsJsonMode !== criteria.supportsJsonMode) return false;
-      if (criteria.supportsThinking !== undefined && m.supportsThinking !== criteria.supportsThinking) return false;
-      if (criteria.minContextWindow !== undefined && m.contextWindow < criteria.minContextWindow) return false;
-      if (criteria.provider !== undefined && m.providerType !== criteria.provider) return false;
-      if (criteria.status !== undefined && m.status !== criteria.status) return false;
-      return true;
-    });
-  }
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Singletons
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export const providerRegistry = new ProviderRegistry();
 export const modelRegistry = new ModelRegistry();
 
-// Initialize built-in driver catalog on module load; lazily populate the
-// model registry from each driver's static catalog. Failures are non-fatal
-// (e.g. Ollama won't be running in most environments).
 providerRegistry.registerBuiltins();
-modelRegistry.loadFromDrivers(providerRegistry).catch((err) => {
-  console.warn('Model registry initial load failed:', err);
-});
+modelRegistry.loadFromDrivers(providerRegistry).catch(() => {});

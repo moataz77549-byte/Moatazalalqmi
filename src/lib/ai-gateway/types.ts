@@ -142,12 +142,24 @@ export interface ProviderConfig {
   organizationId?: string;
   isActive: boolean;
   priority: number;
+  source?: 'DATABASE' | 'ENVIRONMENT';
   config?: Record<string, unknown>;
 }
 
+export type HealthStatusType = 
+  | 'CONNECTED' 
+  | 'DISABLED' 
+  | 'MISSING_API_KEY' 
+  | 'INVALID_API_KEY' 
+  | 'RATE_LIMITED' 
+  | 'UNAVAILABLE' 
+  | 'CONNECTION_ERROR' 
+  | 'TIMEOUT' 
+  | 'UNKNOWN';
+
 export interface HealthStatus {
   provider: ProviderType;
-  status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+  status: HealthStatusType;
   latency: number;
   lastChecked: Date;
   errorRate: number;

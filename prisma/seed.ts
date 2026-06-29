@@ -1,48 +1,41 @@
 /**
- * Moataz AI — Production Database Seed
- * =====================================
- * Seeds essential data for a fresh PostgreSQL deployment.
- * Run: npx prisma db seed
+ * Moataz AI — Enterprise AI Provider Management System (Bootstrap)
+ * ===============================================================
+ * Automatically scans environment variables and initializes the database.
  */
 
-import { PrismaClient, RoleName, PermissionAction, ProviderType } from '@prisma/client';
+import { PrismaClient, RoleName, ProviderType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding Moataz AI database...\n');
+  console.log('🚀 Starting Enterprise AI Provider Management Bootstrap...\n');
 
-  // 1. ROLES & PERMISSIONS
-  console.log('📋 Creating roles...');
-  const roles = await Promise.all([
-    prisma.role.upsert({
-      where: { name: RoleName.SUPER_ADMIN },
-      update: {},
-      create: { name: RoleName.SUPER_ADMIN, description: 'Full system access.' },
-    }),
-    prisma.role.upsert({
-      where: { name: RoleName.ADMIN },
-      update: {},
-      create: { name: RoleName.ADMIN, description: 'Organization administrator.' },
-    }),
-    prisma.role.upsert({
-      where: { name: RoleName.MEMBER },
-      update: {},
-      create: { name: RoleName.MEMBER, description: 'Standard member.' },
-    }),
-  ]);
+  // 1. ROLES
+  console.log('📋 Synchronizing roles...');
+  const roles = [
+    { name: RoleName.SUPER_ADMIN, description: 'Full system access.' },
+    { name: RoleName.ADMIN, description: 'Organization administrator.' },
+    { name: RoleName.MEMBER, description: 'Standard member.' },
+  ];
 
-  // 2. SUPER ADMIN USER
+  for (const role of roles) {
+    await prisma.role.upsert({
+      where: { name: role.name },
+      update: { description: role.description },
+      create: role,
+    });
+  }
+
+  // 2. SUPER ADMIN
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@moataz.ai';
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123!';
   
-  console.log(`👤 Checking for Super Admin: ${adminEmail}...`);
   const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
-
   let superAdmin;
+
   if (!existingAdmin) {
-    console.log('👤 Creating initial Super Admin account...');
     const passwordHash = await bcrypt.hash(adminPassword, 12);
     superAdmin = await prisma.user.create({
       data: {
@@ -55,10 +48,10 @@ async function main() {
         preferredLocale: 'ar',
       },
     });
-    console.log(`   ✅ Super Admin created: ${adminEmail}`);
+    console.log(`👤 Created Super Admin: ${adminEmail}`);
   } else {
     superAdmin = existingAdmin;
-    console.log('   ℹ️ Super Admin already exists, skipping creation.');
+    console.log(`👤 Super Admin verified: ${adminEmail}`);
   }
 
   // 3. DEFAULT ORGANIZATION
@@ -74,37 +67,68 @@ async function main() {
     },
   });
 
-  // 4. AI PROVIDERS (Auto-enable based on ENV)
-  console.log('🤖 Configuring AI providers...');
-  const providerConfigs = [
+  // 4. AUTOMATIC ENVIRONMENT IMPORT (Enterprise Logic)
+  console.log('\n🤖 Scanning Railway Environment Variables for AI Providers...');
+  
+  const providerDefinitions = [
     { type: ProviderType.OPENAI, env: 'OPENAI_API_KEY', name: 'OpenAI' },
     { type: ProviderType.GEMINI, env: 'GEMINI_API_KEY', name: 'Google Gemini' },
-    { type: ProviderType.ANTHROPIC, env: 'ANTHROPIC_API_KEY', name: 'Anthropic' },
-    { type: ProviderType.DEEPSEEK, env: 'DEEPSEEK_API_KEY', name: 'DeepSeek' },
-    { type: ProviderType.GROQ, env: 'GROQ_API_KEY', name: 'Groq' },
+    { type: ProviderType.ANTHROPIC, env: 'ANTHROPIC_API_KEY', name: 'Anthropic Claude' },
     { type: ProviderType.OPENROUTER, env: 'OPENROUTER_API_KEY', name: 'OpenRouter' },
+    { type: ProviderType.GROQ, env: 'GROQ_API_KEY', name: 'Groq' },
+    { type: ProviderType.DEEPSEEK, env: 'DEEPSEEK_API_KEY', name: 'DeepSeek' },
+    { type: ProviderType.NVIDIA_NIM, env: 'NVIDIA_API_KEY', name: 'NVIDIA NIM' },
+    { type: ProviderType.HUGGING_FACE, env: 'HUGGINGFACE_API_KEY', name: 'HuggingFace' },
+    { type: ProviderType.COHERE, env: 'COHERE_API_KEY', name: 'Cohere' },
+    { type: ProviderType.MISTRAL, env: 'MISTRAL_API_KEY', name: 'Mistral' },
+    { type: ProviderType.AZURE_OPENAI, env: 'AZURE_OPENAI_API_KEY', name: 'Azure OpenAI' },
+    { type: ProviderType.OLLAMA, env: 'OLLAMA_BASE_URL', name: 'Ollama' },
   ];
 
-  for (const p of providerConfigs) {
+  for (const p of providerDefinitions) {
     const apiKey = process.env[p.env];
-    const isActive = !!(apiKey && apiKey.length > 0);
-    
-    await prisma.provider.upsert({
-      where: { organizationId_type: { organizationId: defaultOrg.id, type: p.type } },
-      update: { isActive },
-      create: {
-        organizationId: defaultOrg.id,
-        type: p.type,
-        name: p.name,
-        isActive,
-        apiKey: apiKey || '',
-        baseUrl: '', // Use defaults in driver
-      },
+    const isEnvAvailable = !!(apiKey && apiKey.length > 0);
+
+    // Check if provider already exists in DB
+    const existingProvider = await prisma.provider.findUnique({
+      where: { organizationId_type: { organizationId: defaultOrg.id, type: p.type } }
     });
-    console.log(`   ${isActive ? '✅' : '⚪'} Provider ${p.name}: ${isActive ? 'Enabled' : 'Not Configured'}`);
+
+    // Rules:
+    // 1. Never overwrite manually configured providers (Source: DATABASE)
+    // 2. If it doesn't exist, import from ENVIRONMENT
+    // 3. If it exists as ENVIRONMENT source, update from current ENV
+    
+    if (!existingProvider) {
+      await prisma.provider.create({
+        data: {
+          organizationId: defaultOrg.id,
+          type: p.type,
+          name: p.name,
+          apiKey: apiKey || null,
+          isActive: isEnvAvailable,
+          source: 'ENVIRONMENT',
+          healthStatus: isEnvAvailable ? 'CONNECTED' : 'NOT_CONFIGURED',
+          priority: 1,
+        }
+      });
+      console.log(`   ✨ Imported: ${p.name} (Source: Environment) -> ${isEnvAvailable ? 'Enabled' : 'Disabled'}`);
+    } else if (existingProvider.source === 'ENVIRONMENT') {
+      await prisma.provider.update({
+        where: { id: existingProvider.id },
+        data: {
+          apiKey: apiKey || existingProvider.apiKey,
+          isActive: isEnvAvailable,
+          healthStatus: isEnvAvailable ? 'CONNECTED' : 'NOT_CONFIGURED',
+        }
+      });
+      console.log(`   🔄 Updated: ${p.name} (Source: Environment)`);
+    } else {
+      console.log(`   ℹ️  Skipped: ${p.name} (Manual Configuration Protected)`);
+    }
   }
 
-  console.log('\n✅ Seed completed successfully.');
+  console.log('\n✅ Enterprise AI Provider Management System initialized.');
 }
 
 main()

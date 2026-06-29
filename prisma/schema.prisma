@@ -589,9 +589,17 @@ model Provider {
   organizationId String       @db.Uuid
   type           ProviderType
   name           String
-  apiKey         String?
+  apiKey         String?      // Encrypted in production
   baseUrl        String?
   isActive       Boolean      @default(true)
+  priority       Int          @default(1)
+  source         String       @default("DATABASE") // DATABASE or ENVIRONMENT
+  healthStatus   String       @default("UNKNOWN")
+  lastHealthCheck DateTime?
+  lastUsedAt     DateTime?
+  totalRequests  Int          @default(0)
+  totalTokens    Int          @default(0)
+  estimatedCost  Float        @default(0.0)
   config         Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -603,6 +611,8 @@ model Provider {
   @@index([organizationId])
   @@index([type])
   @@index([isActive])
+  @@index([priority])
+  @@index([source])
 }
 
 model Model {
