@@ -1,0 +1,1332 @@
+// ═══════════════════════════════════════════════════════════════════
+// Moataz AI — Production PostgreSQL 16+ Schema (Supabase Compatible)
+// Principal Database Architect: Production-Ready Configuration
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+  binaryTargets   = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ENUMS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  MEMBER
+  GUEST
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  MANAGE
+}
+
+enum ProviderType {
+  OPENAI
+  GEMINI
+  ANTHROPIC
+  OPENROUTER
+  NVIDIA_NIM
+  HUGGING_FACE
+  MISTRAL
+  GROQ
+  DEEPSEEK
+  COHERE
+  AZURE_OPENAI
+  OLLAMA
+  CUSTOM
+}
+
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  PASSWORD_RESET
+  EMAIL_VERIFIED
+  ROLE_CHANGE
+  PERMISSION_CHANGE
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  SETTINGS_CHANGE
+  EXPORT
+}
+
+enum FeatureFlagType {
+  BOOLEAN
+  PERCENTAGE
+  VARIANT
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum FileStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MemoryScope {
+  PERSONAL
+  WORKSPACE
+  PROJECT
+  ORGANIZATION
+  PINNED
+}
+
+enum MemoryType {
+  FACT
+  PREFERENCE
+  DECISION
+  INSTRUCTION
+  CONTEXT
+  SUMMARY
+  ENTITY
+  RELATIONSHIP
+}
+
+enum MemoryStatus {
+  ACTIVE
+  ARCHIVED
+  EXPIRED
+  DEPRECATED
+}
+
+enum DocumentType {
+  PDF
+  DOCX
+  MARKDOWN
+  TEXT
+  CSV
+  CODE
+  HTML
+  WEBPAGE
+  ARTICLE
+  NOTE
+  IMAGE
+  SPREADSHEET
+  PRESENTATION
+}
+
+enum DocumentStatus {
+  PENDING
+  EXTRACTING
+  CHUNKING
+  EMBEDDING
+  INDEXED
+  FAILED
+  DUPLICATE
+}
+
+enum CollectionType {
+  KNOWLEDGE_BASE
+  FOLDER
+  CATEGORY
+  TAG_GROUP
+  SHARED
+}
+
+enum EmbeddingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum EmbeddingModel {
+  OPENAI_SMALL
+  OPENAI_LARGE
+  COHERE
+  MISTRAL
+  LOCAL
+}
+
+enum ArtifactType {
+  CODE
+  IMAGE
+  DOCUMENT
+  TABLE
+  CHART
+  MARKDOWN
+  PDF
+  JSON
+  CSV
+  HTML
+  SVG
+}
+
+enum FolderType {
+  CHAT
+  FILE
+  PROJECT
+}
+
+enum MessageStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  FAILED
+  STOPPED
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+  LOVE
+  THUMBS_UP
+  THUMBS_DOWN
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CORE: USERS & AUTH
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model User {
+  id                    String                @id @default(uuid()) @db.Uuid
+  email                 String                @unique
+  name                  String?
+  avatarUrl             String?
+  passwordHash          String?
+  emailVerified         Boolean               @default(false)
+  emailVerifiedAt       DateTime?
+  isActive              Boolean               @default(true)
+  isSuperAdmin          Boolean               @default(false)
+  lastLoginAt           DateTime?
+  lastLoginIp           String?
+  preferredLocale       String                @default("en")
+  timezone              String                @default("UTC")
+  deletedAt             DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  // Relations
+  sessions              Session[]
+  oauthAccounts         OAuthAccount[]
+  apiKeys               ApiKey[]
+  memberships           Membership[]
+  ownedOrganizations    Organization[]        @relation("OrganizationOwner")
+  chats                 Chat[]
+  messages              Message[]
+  files                 File[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  settings              UserSetting[]
+  featureFlagEvaluations FeatureFlagEvaluation[]
+  folders               Folder[]
+  tags                  Tag[]
+  artifacts             Artifact[]
+  notes                 Note[]
+  tasks                 Task[]
+  chatShares            ChatShare[]
+  messageReactions      MessageReaction[]
+  quickAccessItems      QuickAccess[]
+  promptLibrary         PromptLibrary[]
+  preferences           UserPreference[]
+  memories              Memory[]
+  knowledgeDocuments    KnowledgeDocument[]
+  collections           Collection[]
+  embeddings            Embedding[]
+  memoryPermissions     MemoryPermission[]
+
+  @@index([email])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([isSuperAdmin])
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  token        String   @unique
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  isRevoked    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([refreshToken])
+  @@index([expiresAt])
+  @@index([isRevoked])
+}
+
+model OAuthAccount {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @db.Uuid
+  provider     OAuthProvider
+  providerId   String
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ORGANIZATIONS & TEAMS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Organization {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  description String?
+  isActive    Boolean  @default(true)
+  plan        String   @default("free")
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ownerId     String   @db.Uuid
+  owner       User       @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  memberships Membership[]
+  teams       Team[]
+  projects    Project[]
+  workspaces  Workspace[]
+  providers   Provider[]
+  apiKeys     ApiKey[]
+  chats       Chat[]
+  files       File[]
+  folders     Folder[]
+  tags        Tag[]
+  artifacts   Artifact[]
+  notes       Note[]
+  tasks       Task[]
+  memories    Memory[]
+  knowledgeDocuments KnowledgeDocument[]
+  collections Collection[]
+  embeddings  Embedding[]
+  settings    OrganizationSetting[]
+  auditLogs   AuditLog[]
+
+  @@index([slug])
+  @@index([ownerId])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model Team {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String
+  description    String?
+  organizationId String   @db.Uuid
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model Membership {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  organizationId String   @db.Uuid
+  teamId         String?  @db.Uuid
+  role           RoleName @default(MEMBER)
+  joinedAt       DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([teamId])
+  @@index([role])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RBAC
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        RoleName @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions Permission[]
+}
+
+model Permission {
+  id         String            @id @default(uuid()) @db.Uuid
+  roleId     String            @db.Uuid
+  resource   String
+  action     PermissionAction
+  createdAt  DateTime          @default(now())
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, resource, action])
+  @@index([roleId])
+  @@index([resource])
+}
+
+model Analytics {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  event          String
+  properties     Json?
+  userId         String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([event])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PROJECTS & WORKSPACES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Project {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String
+  description    String?
+  icon           String?
+  color          String?
+  organizationId String   @db.Uuid
+  isActive       Boolean  @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspaces   Workspace[]
+  chats        Chat[]
+  files        File[]
+  artifacts    Artifact[]
+  notes        Note[]
+  tasks        Task[]
+  memories     Memory[]
+  knowledgeDocuments KnowledgeDocument[]
+  collections  Collection[]
+  workspaceVariables WorkspaceVariable[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+model Workspace {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  organizationId String   @db.Uuid
+  projectId      String   @db.Uuid
+  layout         Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AI: CHAT & MESSAGES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Chat {
+  id             String   @id @default(uuid()) @db.Uuid
+  title          String?
+  organizationId String   @db.Uuid
+  projectId      String?  @db.Uuid
+  userId         String   @db.Uuid
+  folderId       String?  @db.Uuid
+  providerType   ProviderType?
+  modelId        String?
+  isArchived     Boolean  @default(false)
+  isPinned       Boolean  @default(false)
+  isFavorite     Boolean  @default(false)
+  isShared       Boolean  @default(false)
+  parentChatId   String?  @db.Uuid
+  modelParams    Json?
+  lastMessageAt  DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  folder       Folder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  parentChat   Chat?      @relation("ChatBranch", fields: [parentChatId], references: [id], onDelete: SetNull)
+  branches     Chat[]     @relation("ChatBranch")
+  messages     Message[]
+  tags         ChatTag[]
+  shares       ChatShare[]
+  artifacts    Artifact[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([folderId])
+  @@index([createdAt])
+  @@index([lastMessageAt])
+  @@index([isPinned])
+  @@index([isArchived])
+  @@index([deletedAt])
+  @@index([parentChatId])
+}
+
+model Message {
+  id              String        @id @default(uuid()) @db.Uuid
+  chatId          String        @db.Uuid
+  userId          String?       @db.Uuid
+  role            String
+  content         String        @db.Text
+  model           String?
+  tokensIn        Int?
+  tokensOut       Int?
+  status          MessageStatus @default(COMPLETED)
+  metadata        Json?
+  parentMessageId String?       @db.Uuid
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  chat      Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  versions  MessageVersion[]
+  reactions MessageReaction[]
+  artifacts Artifact[]
+
+  @@index([chatId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([parentMessageId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AI: PROVIDERS & MODELS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Provider {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  type           ProviderType
+  name           String
+  apiKey         String?
+  baseUrl        String?
+  isActive       Boolean      @default(true)
+  config         Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  models       Model[]
+
+  @@unique([organizationId, type])
+  @@index([organizationId])
+  @@index([type])
+  @@index([isActive])
+}
+
+model Model {
+  id            String   @id @default(uuid()) @db.Uuid
+  providerId    String   @db.Uuid
+  externalId    String
+  name          String
+  description   String?
+  contextWindow Int?
+  isActive      Boolean  @default(true)
+  pricing       Json?
+  capabilities  Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, externalId])
+  @@index([providerId])
+  @@index([isActive])
+}
+
+model PromptTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  description    String?
+  content        String   @db.Text
+  variables      Json?
+  isPublic       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([name])
+  @@index([isPublic])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FILES & DOCUMENTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model File {
+  id             String     @id @default(uuid()) @db.Uuid
+  name           String
+  originalName   String
+  mimeType       String
+  size           Int
+  storageKey     String
+  url            String?
+  organizationId String     @db.Uuid
+  projectId      String?    @db.Uuid
+  folderId       String?    @db.Uuid
+  userId         String     @db.Uuid
+  status         FileStatus @default(PENDING)
+  metadata       Json?
+  version        Int        @default(1)
+  parentFileId   String?    @db.Uuid
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  folder       Folder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  versions     File[]       @relation("FileVersions")
+  parent       File?        @relation("FileVersions", fields: [parentFileId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([folderId])
+  @@index([mimeType])
+  @@index([parentFileId])
+  @@index([status])
+  @@index([storageKey])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// API KEYS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model ApiKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  organizationId String?  @db.Uuid
+  name           String
+  keyHash        String   @unique
+  keyPrefix      String
+  permissions    Json?
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  isRevoked      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([keyHash])
+  @@index([keyPrefix])
+  @@index([isRevoked])
+  @@index([expiresAt])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NOTIFICATIONS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @db.Uuid
+  type       NotificationType
+  title      String
+  message    String
+  link       String?
+  isRead     Boolean          @default(false)
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AUDIT LOGS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String?      @db.Uuid
+  organizationId String?      @db.Uuid
+  action         AuditAction
+  resource       String
+  resourceId     String?
+  details        Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([action])
+  @@index([resource])
+  @@index([resourceId])
+  @@index([createdAt])
+  @@index([organizationId, createdAt])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SETTINGS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model UserSetting {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  key    String
+  value  Json
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+}
+
+model OrganizationSetting {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  key            String
+  value          Json
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FEATURE FLAGS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model FeatureFlag {
+  id          String          @id @default(uuid()) @db.Uuid
+  key         String          @unique
+  name        String
+  description String?
+  type        FeatureFlagType @default(BOOLEAN)
+  value       Json
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  evaluations FeatureFlagEvaluation[]
+
+  @@index([key])
+  @@index([isActive])
+}
+
+model FeatureFlagEvaluation {
+  id          String   @id @default(uuid()) @db.Uuid
+  flagId      String   @db.Uuid
+  userId      String   @db.Uuid
+  variant     String?
+  evaluatedAt DateTime @default(now())
+
+  flag FeatureFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([flagId])
+  @@index([userId])
+  @@index([evaluatedAt])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// WORKSPACE & CHAT PLATFORM
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Folder {
+  id             String     @id @default(uuid()) @db.Uuid
+  name           String
+  type           FolderType
+  parentId       String?    @db.Uuid
+  organizationId String     @db.Uuid
+  userId         String     @db.Uuid
+  icon           String?
+  color          String?
+  sortOrder      Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Folder?      @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Folder[]     @relation("FolderHierarchy")
+  chats        Chat[]
+  files        File[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([parentId])
+  @@index([type])
+  @@index([sortOrder])
+}
+
+model Tag {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  color          String   @default("#6366f1")
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chats        ChatTag[]
+
+  @@unique([organizationId, name, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model ChatTag {
+  chatId String @db.Uuid
+  tagId  String @db.Uuid
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([chatId, tagId])
+  @@index([chatId])
+  @@index([tagId])
+}
+
+model ChatShare {
+  id         String    @id @default(uuid()) @db.Uuid
+  chatId     String    @db.Uuid
+  userId     String    @db.Uuid
+  shareToken String    @unique
+  isPublic   Boolean   @default(false)
+  expiresAt  DateTime?
+  viewCount  Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([userId])
+  @@index([shareToken])
+  @@index([expiresAt])
+}
+
+model MessageVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @db.Uuid
+  content   String   @db.Text
+  version   Int
+  editedBy  String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([version])
+}
+
+model MessageReaction {
+  id        String       @id @default(uuid()) @db.Uuid
+  messageId String       @db.Uuid
+  userId    String       @db.Uuid
+  type      ReactionType
+  createdAt DateTime     @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, type])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model Artifact {
+  id               String       @id @default(uuid()) @db.Uuid
+  title            String
+  artifactType     ArtifactType
+  content          String       @db.Text
+  language         String?
+  metadata         Json?
+  organizationId   String       @db.Uuid
+  userId           String       @db.Uuid
+  projectId        String?      @db.Uuid
+  chatId           String?      @db.Uuid
+  messageId        String?      @db.Uuid
+  isPublic         Boolean      @default(false)
+  version          Int          @default(1)
+  parentArtifactId String?      @db.Uuid
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  chat         Chat?        @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([chatId])
+  @@index([messageId])
+  @@index([artifactType])
+  @@index([parentArtifactId])
+}
+
+model Note {
+  id             String   @id @default(uuid()) @db.Uuid
+  title          String
+  content        String   @db.Text
+  organizationId String   @db.Uuid
+  projectId      String?  @db.Uuid
+  userId         String   @db.Uuid
+  isPinned       Boolean  @default(false)
+  tags           Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([isPinned])
+}
+
+model Task {
+  id             String    @id @default(uuid()) @db.Uuid
+  title          String
+  description    String?   @db.Text
+  status         String    @default("todo")
+  priority       String    @default("medium")
+  organizationId String    @db.Uuid
+  projectId      String?   @db.Uuid
+  userId         String    @db.Uuid
+  assigneeId     String?   @db.Uuid
+  dueDate        DateTime?
+  completedAt    DateTime?
+  tags           Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([status])
+  @@index([priority])
+  @@index([assigneeId])
+  @@index([dueDate])
+}
+
+model QuickAccess {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  itemType  String
+  itemId    String
+  label     String
+  icon      String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemType, itemId])
+  @@index([userId])
+  @@index([sortOrder])
+}
+
+model WorkspaceVariable {
+  id             String   @id @default(uuid()) @db.Uuid
+  key            String
+  value          String   @db.Text
+  description    String?
+  isSecret       Boolean  @default(false)
+  organizationId String   @db.Uuid
+  projectId      String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+model PromptLibrary {
+  id             String   @id @default(uuid()) @db.Uuid
+  title          String
+  description    String?
+  content        String   @db.Text
+  category       String   @default("general")
+  tags           Json?
+  organizationId String?  @db.Uuid
+  userId         String   @db.Uuid
+  isPublic       Boolean  @default(false)
+  isFavorite     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([category])
+  @@index([isPublic])
+}
+
+model UserPreference {
+  id       String   @id @default(uuid()) @db.Uuid
+  userId   String   @db.Uuid
+  category String
+  settings Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@index([userId])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MEMORY ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Memory {
+  id             String         @id @default(uuid()) @db.Uuid
+  content        String         @db.Text
+  summary        String?
+  type           MemoryType
+  scope          MemoryScope
+  status         MemoryStatus   @default(ACTIVE)
+  organizationId String         @db.Uuid
+  userId         String         @db.Uuid
+  projectId      String?        @db.Uuid
+  chatId         String?        @db.Uuid
+  parentMemoryId String?        @db.Uuid
+  embedding      Json?
+  embeddingModel EmbeddingModel?
+  confidence     Float          @default(0.5)
+  importance     Float          @default(0.5)
+  accessCount    Int            @default(0)
+  lastAccessedAt DateTime?
+  expiresAt      DateTime?
+  deprecatedAt   DateTime?
+  metadata       Json?
+  tags           Json?
+  source         String?
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent       Memory?      @relation("MemoryVersion", fields: [parentMemoryId], references: [id], onDelete: SetNull)
+  versions     Memory[]     @relation("MemoryVersion")
+  permissions  MemoryPermission[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([chatId])
+  @@index([scope])
+  @@index([type])
+  @@index([status])
+  @@index([confidence])
+  @@index([importance])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([parentMemoryId])
+}
+
+model MemoryPermission {
+  id        String   @id @default(uuid()) @db.Uuid
+  memoryId  String   @db.Uuid
+  userId    String   @db.Uuid
+  access    String   @default("read")
+  createdAt DateTime @default(now())
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([memoryId, userId])
+  @@index([memoryId])
+  @@index([userId])
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// KNOWLEDGE BASE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+model Collection {
+  id             String         @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  collectionType CollectionType
+  parentId       String?        @db.Uuid
+  organizationId String         @db.Uuid
+  userId         String         @db.Uuid
+  projectId      String?        @db.Uuid
+  icon           String?
+  color          String?
+  isShared       Boolean        @default(false)
+  isPublic       Boolean        @default(false)
+  sortOrder      Int            @default(0)
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent       Collection?  @relation("CollectionHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Collection[] @relation("CollectionHierarchy")
+  documents    KnowledgeDocument[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([parentId])
+  @@index([collectionType])
+  @@index([sortOrder])
+}
+
+model KnowledgeDocument {
+  id                 String         @id @default(uuid()) @db.Uuid
+  title              String
+  content            String         @db.Text
+  summary            String?        @db.Text
+  documentType       DocumentType
+  status             DocumentStatus @default(PENDING)
+  organizationId     String         @db.Uuid
+  userId             String         @db.Uuid
+  projectId          String?        @db.Uuid
+  collectionId       String?        @db.Uuid
+  fileId             String?        @db.Uuid
+  sourceUrl          String?
+  sourceType         String?
+  language           String?
+  contentHash        String?
+  checksum           String?
+  pageCount          Int?
+  wordCount          Int?
+  charCount          Int?
+  chunkCount         Int?
+  metadata           Json?
+  tags               Json?
+  categories         Json?
+  keywords           Json?
+  topics             Json?
+  languageConfidence Float?
+  duplicateOfId      String?        @db.Uuid
+  processingError    String?        @db.Text
+  processedAt        DateTime?
+  indexedAt           DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  collection   Collection?  @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  chunks       DocumentChunk[]
+  embeddings   Embedding[]
+  duplicateOf  KnowledgeDocument? @relation("DocumentDuplicate", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates   KnowledgeDocument[] @relation("DocumentDuplicate")
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([collectionId])
+  @@index([documentType])
+  @@index([status])
+  @@index([contentHash])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([duplicateOfId])
+}
+
+model DocumentChunk {
+  id              String          @id @default(uuid()) @db.Uuid
+  documentId      String          @db.Uuid
+  content         String          @db.Text
+  chunkIndex      Int
+  tokenCount      Int?
+  charCount       Int
+  startPosition   Int
+  endPosition     Int
+  embedding       Json?
+  embeddingModel  EmbeddingModel?
+  embeddingStatus EmbeddingStatus @default(PENDING)
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  embeddings Embedding[]
+
+  @@index([documentId])
+  @@index([embeddingStatus])
+  @@index([chunkIndex])
+  @@index([documentId, chunkIndex])
+}
+
+model Embedding {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String          @db.Uuid
+  userId           String          @db.Uuid
+  documentId       String?         @db.Uuid
+  chunkId          String?         @db.Uuid
+  memoryId         String?         @db.Uuid
+  embedding        Json
+  embeddingModel   EmbeddingModel
+  dimensions       Int
+  textPreview      String
+  qdrantId         String?
+  qdrantCollection String?
+  status           EmbeddingStatus @default(COMPLETED)
+  metadata         Json?
+  createdAt        DateTime        @default(now())
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     KnowledgeDocument? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk        DocumentChunk?     @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([documentId])
+  @@index([chunkId])
+  @@index([memoryId])
+  @@index([embeddingModel])
+  @@index([status])
+  @@index([qdrantCollection])
+  @@index([qdrantId])
+}
+
+model SearchIndex {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  itemType       String
+  itemId         String
+  title          String
+  content        String   @db.Text
+  summary        String?  @db.Text
+  keywords       Json?
+  topics         Json?
+  language       String?
+  classification String?
+  metadata       Json?
+  embedding      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([itemType, itemId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([itemType])
+  @@index([itemId])
+  @@index([createdAt])
+  @@index([organizationId, itemType])
+}

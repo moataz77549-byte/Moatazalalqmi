@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+*.log
+tool-results
+examples
+agent-ctx
+download
+monitoring
+mini-services
+worklog.md
+.env
+.env.local
+.env*.local
