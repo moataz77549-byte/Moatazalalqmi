@@ -9,37 +9,43 @@ import { errorResponse, successResponse } from '@/lib/api';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[Login:${requestId}] 🟢 Authentication request started`);
+
   try {
-    // Rate limit by IP — 10 attempts per 15 minutes
     const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
-    
-    // Safety check for rateLimit function to avoid Internal Server Error if it fails
+    console.log(`[Login:${requestId}] Client IP: ${clientIp}`);
+
+    // 1. Rate Limiting
     let rateLimitResult;
     try {
       rateLimitResult = rateLimit(`login:${clientIp}`, 10, 15 * 60 * 1000);
     } catch (e) {
-      console.warn('Rate limit check failed, bypassing:', e);
+      console.warn(`[Login:${requestId}] ⚠️ Rate limit check failed:`, e);
       rateLimitResult = { allowed: true };
     }
 
     if (!rateLimitResult.allowed) {
+      console.log(`[Login:${requestId}] ❌ Rate limit exceeded for IP: ${clientIp}`);
       return NextResponse.json(
         errorResponse('Too many login attempts. Please try again later.'),
         { status: 429 }
       );
     }
 
-    // Safely parse JSON body
+    // 2. Body Parsing
     let body;
     try {
       body = await request.json();
     } catch (e) {
+      console.log(`[Login:${requestId}] ❌ Invalid JSON body`);
       return NextResponse.json(errorResponse('Invalid JSON body'), { status: 400 });
     }
 
+    // 3. Validation
     const validation = loginSchema.safeParse(body);
-
     if (!validation.success) {
+      console.log(`[Login:${requestId}] ❌ Validation failed:`, validation.error.issues.map(i => i.message));
       return NextResponse.json(
         errorResponse(validation.error.issues.map((i) => i.message).join(', ')),
         { status: 400 }
@@ -47,18 +53,19 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = validation.data;
+    console.log(`[Login:${requestId}] Attempting login for email: ${email}`);
 
-    // Find user by email
+    // 4. User Lookup
     const user = await db.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
-      // Audit log should be non-blocking
+      console.log(`[Login:${requestId}] ❌ User not found or no password hash for: ${email}`);
       createAuditLog({
         action: 'LOGIN_FAILED',
         resource: 'session',
         details: { email, reason: 'user_not_found' },
         ipAddress: clientIp,
         userAgent: request.headers.get('user-agent') || undefined,
-      }).catch(console.error);
+      }).catch(err => console.error(`[Login:${requestId}] Audit log error:`, err));
 
       return NextResponse.json(
         errorResponse('Invalid email or password'),
@@ -66,9 +73,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify password
+    // 5. Password Verification
+    console.log(`[Login:${requestId}] Verifying password for user: ${user.id}`);
     const isValid = await verifyPassword(password, user.passwordHash);
     if (!isValid) {
+      console.log(`[Login:${requestId}] ❌ Invalid password for user: ${user.id}`);
       createAuditLog({
         userId: user.id,
         action: 'LOGIN_FAILED',
@@ -76,7 +85,7 @@ export async function POST(request: NextRequest) {
         details: { email, reason: 'invalid_password' },
         ipAddress: clientIp,
         userAgent: request.headers.get('user-agent') || undefined,
-      }).catch(console.error);
+      }).catch(err => console.error(`[Login:${requestId}] Audit log error:`, err));
 
       return NextResponse.json(
         errorResponse('Invalid email or password'),
@@ -84,19 +93,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user is active
+    // 6. Account Status Check
     if (!user.isActive) {
+      console.log(`[Login:${requestId}] ❌ Account deactivated for user: ${user.id}`);
       return NextResponse.json(
         errorResponse('Account is deactivated'),
         { status: 403 }
       );
     }
 
-    // Create session
+    // 7. Session Creation
+    console.log(`[Login:${requestId}] Creating session for user: ${user.id}`);
     const userAgent = request.headers.get('user-agent') || undefined;
     const session = await createSession(user.id, userAgent, clientIp);
 
-    // Update lastLoginAt and lastLoginIp
+    // 8. Finalizing Login
+    console.log(`[Login:${requestId}] Updating last login info for user: ${user.id}`);
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -105,7 +117,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create audit log
     createAuditLog({
       userId: user.id,
       action: 'LOGIN',
@@ -113,9 +124,9 @@ export async function POST(request: NextRequest) {
       resourceId: session.id,
       ipAddress: clientIp,
       userAgent,
-    }).catch(console.error);
+    }).catch(err => console.error(`[Login:${requestId}] Audit log error:`, err));
 
-    // Return user without passwordHash + session token
+    console.log(`[Login:${requestId}] ✅ Login successful for user: ${user.id}`);
     const { passwordHash: _, ...userWithoutPassword } = user;
 
     return NextResponse.json(
@@ -126,15 +137,17 @@ export async function POST(request: NextRequest) {
       }, 'Login successful'),
       { status: 200 }
     );
+
   } catch (error: any) {
-    console.error('Login error details:', error);
-    // Return more helpful error message in production if it's a known database issue
-    const message = error.message?.includes('Prisma') 
-      ? 'Database connection error. Please check if your database is running.'
-      : 'Internal server error';
+    console.error(`[Login:${requestId}] 💥 UNHANDLED EXCEPTION:`, error);
+    
+    // Safety fallback: Never return 500 if possible, or return a clean message
+    const errorMessage = error.message?.includes('Prisma') 
+      ? 'Database connectivity issue. Please try again in a moment.'
+      : 'Authentication service temporarily unavailable.';
       
     return NextResponse.json(
-      errorResponse(message),
+      errorResponse(errorMessage),
       { status: 500 }
     );
   }
