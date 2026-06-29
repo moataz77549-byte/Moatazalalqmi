@@ -1,8 +1,6 @@
 # Moataz AI - High Reliability Production Dockerfile
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl wget bash && \
-    wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -O /usr/bin/wait-for-it.sh && \
-    chmod +x /usr/bin/wait-for-it.sh
+RUN apk add --no-cache libc6-compat openssl bash
 WORKDIR /app
 
 # Step 1: Install Dependencies
@@ -17,6 +15,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Ensure Prisma is generated during build time
 RUN npx prisma generate --schema=./prisma/schema.prisma
 RUN npm run build
 
