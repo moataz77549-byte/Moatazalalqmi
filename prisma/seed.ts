@@ -37,7 +37,6 @@ async function main() {
   ];
   const actions = Object.values(PermissionAction);
 
-  // Grant ALL to SUPER_ADMIN & ADMIN
   for (const roleName of [RoleName.SUPER_ADMIN, RoleName.ADMIN]) {
     const role = roleRecords[roleName];
     if (!role) continue;
