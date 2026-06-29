@@ -34,23 +34,24 @@ fi
 echo "🔍 Checking database connectivity at $DB_HOST:$DB_PORT..."
 
 # Wait for DB with exponential backoff
-MAX_RETRIES=5
+MAX_RETRIES=3
 RETRY_COUNT=0
 WAIT_TIME=2
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-  if /usr/bin/wait-for-it.sh "$DB_HOST:$DB_PORT" -t 5; then
-    echo "✅ Database is reachable."
+  if /usr/bin/wait-for-it.sh "$DB_HOST:$DB_PORT" -t 15; then
+    echo "✅ Database is reachable via TCP."
     break
   else
     RETRY_COUNT=$((RETRY_COUNT+1))
+    echo "⚠️ Database TCP check timed out. Retrying in ${WAIT_TIME}s... (Attempt $RETRY_COUNT/$MAX_RETRIES)"
     if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-      echo "❌ FATAL ERROR: Database unreachable after $MAX_RETRIES attempts."
-      exit 1
+      echo "⚠️ Warning: Database unreachable via TCP after $MAX_RETRIES attempts."
+      echo "🚀 Proceeding anyway to let Prisma attempt a full connection..."
+    else
+      sleep $WAIT_TIME
+      WAIT_TIME=$((WAIT_TIME * 2))
     fi
-    echo "⚠️ Database not ready. Retrying in ${WAIT_TIME}s... (Attempt $RETRY_COUNT/$MAX_RETRIES)"
-    sleep $WAIT_TIME
-    WAIT_TIME=$((WAIT_TIME * 2))
   fi
 done
 
@@ -59,14 +60,20 @@ echo "⚙️ Step 1/3: Generating Prisma Client..."
 npx prisma generate --schema=./prisma/schema.prisma
 
 echo "⚙️ Step 2/3: Applying Database Migrations..."
-# Use db push as a safer fallback in production for rapid changes
-npx prisma migrate deploy --schema=./prisma/schema.prisma || {
-  echo "⚠️ Migration failed. Attempting 'db push' to ensure schema matches..."
-  npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma
-}
+# We use a try-catch style here to prevent fatal crash if DB is still warming up
+if npx prisma migrate deploy --schema=./prisma/schema.prisma; then
+  echo "✅ Migrations applied successfully."
+else
+  echo "⚠️ Migration deploy failed. Attempting 'db push' as fallback..."
+  npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma || {
+    echo "❌ FATAL ERROR: Database connection failed during initialization."
+    echo "Please verify your DATABASE_URL and Supabase network settings (IPv4/IPv6)."
+    exit 1
+  }
+fi
 
 echo "⚙️ Step 3/3: Running Production Bootstrap (Seed)..."
-# We always run seed in production to ensure Super Admin and Providers are configured
+# This is where Admin and Providers are imported
 npx prisma db seed || echo "⚠️ Seed execution had warnings, but continuing startup..."
 
 # 3. Start Application
