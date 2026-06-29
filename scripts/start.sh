@@ -64,16 +64,12 @@ else
   fi
 fi
 
-# 5. Optional Seeding
-if [ "$SEED_ON_START" = "true" ]; then
-  echo "🌱 Step 3/3: Seeding database..."
-  if npx prisma db seed; then
-    echo "✅ Seeding completed."
-  else
-    echo "⚠️ Seeding failed but continuing startup..."
-  fi
+# 5. Bootstrap Data (Always run seed to ensure Admin & Providers are configured)
+echo "🌱 Step 3/3: Running Production Bootstrap (Seed)..."
+if npx prisma db seed; then
+  echo "✅ Bootstrap completed."
 else
-  echo "⏭️  Step 3/3: Seeding skipped (SEED_ON_START is not true)."
+  echo "⚠️ Bootstrap seed failed but continuing startup..."
 fi
 
 echo "🚀 Starting Moataz AI Server..."
