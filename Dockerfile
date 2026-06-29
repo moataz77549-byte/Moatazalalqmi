@@ -1,6 +1,6 @@
 # Moataz AI - High Reliability Production Dockerfile
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl wget && \
+RUN apk add --no-cache libc6-compat openssl wget bash && \
     wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -O /usr/bin/wait-for-it.sh && \
     chmod +x /usr/bin/wait-for-it.sh
 WORKDIR /app
