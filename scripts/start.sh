@@ -2,35 +2,26 @@
 set -e
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Moataz AI — Ultimate Production Bootstrap Startup Script
+# Moataz AI — Production Recovery & Stabilization Startup
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-echo "═══════════════════════════════════════"
-echo "  Moataz AI Platform — Production Startup"
-echo "═══════════════════════════════════════"
+echo "🛡️ ENTERING PRODUCTION RECOVERY STARTUP..."
 
-# 1. Environment & Database Check
+# 1. Database Connection Check (Non-blocking)
 if [ -z "$DATABASE_URL" ]; then
-  echo "⚠️ WARNING: DATABASE_URL is missing. Application will run in degraded mode."
+  echo "⚠️ CRITICAL: DATABASE_URL is missing. Application starting in degraded mode."
 else
-  # Auto-encode # if present for runtime stability
+  # Encode # for Prisma stability
   if [[ "$DATABASE_URL" == *"#"* ]]; then
     export DATABASE_URL="${DATABASE_URL//#/%23}"
   fi
   echo "✅ DATABASE_URL detected."
   
-  # Try to run migrations and seed (Bootstrap)
-  echo "⚙️ Initializing System Bootstrap..."
-  
-  # Run Prisma Seed (which now handles Admin, Roles, Providers, and Settings)
-  # We use npx tsx directly to ensure it uses the production node_modules
-  npx prisma db seed || echo "⚠️ Bootstrap seed had warnings, but continuing startup..."
+  # Run Recovery Seed (Offline-ready, no package downloads)
+  echo "⚙️ Executing Recovery Bootstrap..."
+  npx prisma db seed || echo "⚠️ Recovery seed finished with warnings."
 fi
 
-# 2. Final System Readiness
-echo "ℹ️ Using pre-compiled build assets."
+# 2. Start Application
 echo "🚀 Starting Moataz AI Server..."
-echo "═══════════════════════════════════════"
-
-# Execute the pre-built standalone server
 exec node server.js

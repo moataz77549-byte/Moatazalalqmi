@@ -1,8 +1,7 @@
 /**
- * Moataz AI — Ultimate Production Bootstrap & System Initialization
- * =================================================================
- * Principal Architect: Moataz AI Team
- * Version: 2.0.0 (Production)
+ * Moataz AI — Production Recovery & Stabilization Bootstrap
+ * ========================================================
+ * Version: 3.0.0 (Recovery Mode)
  */
 
 import { PrismaClient, RoleName, ProviderType, PermissionAction, FeatureFlagType } from '@prisma/client';
@@ -11,10 +10,10 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🚀 INITIALIZING MOATAZ AI PRODUCTION BOOTSTRAP...\n');
+  console.log('🛡️ ENTERING PRODUCTION RECOVERY MODE...\n');
 
-  // 1. ROLES SYNCHRONIZATION
-  console.log('📋 Step 1: Synchronizing RBAC Roles...');
+  // 1. ROLES & PERMISSIONS AUDIT
+  console.log('📋 Phase 1: Roles & RBAC Audit...');
   const roles = Object.values(RoleName);
   const roleRecords: Record<string, any> = {};
   
@@ -24,31 +23,24 @@ async function main() {
       update: {},
       create: {
         name: roleName,
-        description: `Official ${roleName} role for the Moataz AI platform.`,
+        description: `Official ${roleName} role for Moataz AI Recovery.`,
       },
     });
     roleRecords[roleName] = role;
-    console.log(`   - Role ${roleName} synchronized.`);
   }
 
-  // 2. PERMISSIONS INITIALIZATION
-  console.log('\n🔐 Step 2: Initializing Global Permissions...');
   const resources = [
     'user', 'organization', 'team', 'project', 'workspace', 'chat', 
     'provider', 'model', 'file', 'artifact', 'note', 'task', 
     'memory', 'knowledge', 'collection', 'embedding', 'settings', 
     'auditLog', 'analytics', 'featureFlag', 'notification'
   ];
-
   const actions = Object.values(PermissionAction);
 
-  // Grant ALL permissions to SUPER_ADMIN and ADMIN (for now, can be refined)
-  const privilegedRoles = [RoleName.SUPER_ADMIN, RoleName.ADMIN];
-  
-  for (const roleName of privilegedRoles) {
+  // Grant ALL to SUPER_ADMIN & ADMIN
+  for (const roleName of [RoleName.SUPER_ADMIN, RoleName.ADMIN]) {
     const role = roleRecords[roleName];
     if (!role) continue;
-    
     for (const resource of resources) {
       for (const action of actions) {
         await prisma.permission.upsert({
@@ -58,11 +50,11 @@ async function main() {
         });
       }
     }
-    console.log(`   - Full permissions granted to ${roleName}.`);
   }
+  console.log('   ✅ RBAC System Stabilized.');
 
-  // 3. OFFICIAL SUPER ADMIN ACCOUNT
-  console.log('\n👤 Step 3: Synchronizing Official Platform Administrator...');
+  // 2. SUPER ADMIN RECOVERY
+  console.log('\n👤 Phase 2: Super Admin Recovery...');
   const officialEmail = 'mtzallqmy@gmail.com';
   const officialPassword = 'moataz7754';
   const passwordHash = await bcrypt.hash(officialPassword, 12);
@@ -85,20 +77,18 @@ async function main() {
       isActive: true,
       isSuperAdmin: true,
       preferredLocale: 'ar',
-      timezone: 'Asia/Riyadh',
     },
   });
-  console.log(`   ✅ Official Super Admin Ready: ${officialEmail}`);
+  console.log(`   ✅ Owner Account Secured: ${officialEmail}`);
 
-  // 4. DEFAULT ORGANIZATION & WORKSPACE
-  console.log('\n🏢 Step 4: Creating Default Organization & Workspace...');
+  // 3. INFRASTRUCTURE RECOVERY
+  console.log('\n🏢 Phase 3: Infrastructure Recovery...');
   const defaultOrg = await prisma.organization.upsert({
     where: { slug: 'moataz-ai-enterprise' },
     update: { ownerId: superAdmin.id },
     create: {
       name: 'Moataz AI Enterprise',
       slug: 'moataz-ai-enterprise',
-      description: 'Default production organization.',
       isActive: true,
       plan: 'enterprise',
       ownerId: superAdmin.id,
@@ -111,25 +101,22 @@ async function main() {
     create: {
       name: 'Main Project',
       slug: 'default-project',
-      description: 'Default production project.',
       organizationId: defaultOrg.id,
       isActive: true,
     },
   });
 
-  const defaultWorkspace = await prisma.workspace.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000001' }, // Fixed UUID for default
+  await prisma.workspace.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
     update: { organizationId: defaultOrg.id, projectId: defaultProject.id },
     create: {
       id: '00000000-0000-0000-0000-000000000001',
       name: 'Production Workspace',
-      description: 'Primary workspace for AI operations.',
       organizationId: defaultOrg.id,
       projectId: defaultProject.id,
     },
   });
 
-  // Ensure Membership
   await prisma.membership.upsert({
     where: { userId_organizationId: { userId: superAdmin.id, organizationId: defaultOrg.id } },
     update: { role: RoleName.SUPER_ADMIN },
@@ -139,10 +126,10 @@ async function main() {
       role: RoleName.SUPER_ADMIN,
     },
   });
-  console.log('   ✅ Infrastructure initialized.');
+  console.log('   ✅ Core Organization & Workspaces Ready.');
 
-  // 5. AI PROVIDERS & ENVIRONMENT IMPORT
-  console.log('\n🤖 Step 5: Importing AI Providers from Environment...');
+  // 4. PROVIDER MANAGER RECOVERY
+  console.log('\n🤖 Phase 4: AI Provider Recovery & Import...');
   const providerConfigs = [
     { type: ProviderType.OPENAI, env: 'OPENAI_API_KEY', name: 'OpenAI' },
     { type: ProviderType.GEMINI, env: 'GEMINI_API_KEY', name: 'Google Gemini' },
@@ -169,7 +156,7 @@ async function main() {
         isActive: isConfigured,
         apiKey: apiKey || undefined,
         healthStatus: isConfigured ? 'CONNECTED' : 'NOT_CONFIGURED',
-        baseUrl: p.type === ProviderType.CUSTOM ? process.env.OPENAI_COMPATIBLE_URL : undefined
+        source: 'ENVIRONMENT'
       },
       create: {
         organizationId: defaultOrg.id,
@@ -179,51 +166,28 @@ async function main() {
         isActive: isConfigured,
         source: 'ENVIRONMENT',
         healthStatus: isConfigured ? 'CONNECTED' : 'NOT_CONFIGURED',
-        baseUrl: p.type === ProviderType.CUSTOM ? process.env.OPENAI_COMPATIBLE_URL : undefined
       },
     });
-    console.log(`   ${isConfigured ? '✅' : '⚪'} Provider ${p.name}: ${isConfigured ? 'Active' : 'Not Configured'}`);
+    console.log(`   ${isConfigured ? '✅' : '⚪'} Provider ${p.name}: ${isConfigured ? 'Enabled' : 'Disabled'}`);
   }
 
-  // 6. FEATURE FLAGS & SETTINGS
-  console.log('\n🚩 Step 6: Initializing Feature Flags & Defaults...');
+  // 5. STABILIZATION DEFAULTS
+  console.log('\n🚩 Phase 5: Stabilization Defaults...');
   const flags = [
-    { key: 'enable-registration', name: 'User Registration', type: FeatureFlagType.BOOLEAN, value: true },
-    { key: 'enable-api-access', name: 'External API Access', type: FeatureFlagType.BOOLEAN, value: true },
-    { key: 'enable-file-upload', name: 'File Upload & Analysis', type: FeatureFlagType.BOOLEAN, value: true },
-    { key: 'maintenance-mode', name: 'Maintenance Mode', type: FeatureFlagType.BOOLEAN, value: false },
+    { key: 'enable-registration', name: 'Registration', type: FeatureFlagType.BOOLEAN, value: true },
+    { key: 'maintenance-mode', name: 'Maintenance', type: FeatureFlagType.BOOLEAN, value: false },
   ];
-
   for (const flag of flags) {
-    await prisma.featureFlag.upsert({
-      where: { key: flag.key },
-      update: { value: flag.value },
-      create: flag,
-    });
+    await prisma.featureFlag.upsert({ where: { key: flag.key }, update: {}, create: flag });
   }
 
-  // Default Org Settings
-  const orgSettings = [
-    { key: 'default-language', value: 'ar' },
-    { key: 'theme-color', value: '#6366f1' },
-    { key: 'allow-public-sharing', value: true },
-  ];
-
-  for (const setting of orgSettings) {
-    await prisma.organizationSetting.upsert({
-      where: { organizationId_key: { organizationId: defaultOrg.id, key: setting.key } },
-      update: { value: setting.value },
-      create: { organizationId: defaultOrg.id, key: setting.key, value: setting.value },
-    });
-  }
-
-  console.log('\n✨ BOOTSTRAP COMPLETED SUCCESSFULLY.');
+  console.log('\n✨ RECOVERY COMPLETED. SYSTEM STABILIZED.');
   console.log('═══════════════════════════════════════════');
 }
 
 main()
   .catch((e) => {
-    console.error('\n❌ BOOTSTRAP FAILED:', e);
+    console.error('\n❌ RECOVERY FAILED:', e);
     process.exit(1);
   })
   .finally(async () => {
