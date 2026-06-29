@@ -24,9 +24,12 @@ if [[ "$DATABASE_URL" == *"#"* ]]; then
 fi
 
 # Extract host and port for wait-for-it
+# Format: postgresql://user:pass@host:port/db
 DB_HOST=$(echo $DATABASE_URL | sed -e 's|.*@||' -e 's|/.*||' -e 's|:.*||')
-DB_PORT=$(echo $DATABASE_URL | sed -e 's|.*:||' -e 's|/.*||')
-[[ $DB_PORT =~ ^[0-9]+$ ]] || DB_PORT=5432
+DB_PORT=$(echo $DATABASE_URL | sed -n -e 's|.*:||p' | sed -e 's|/.*||')
+if [[ ! "$DB_PORT" =~ ^[0-9]+$ ]]; then
+  DB_PORT=5432
+fi
 
 echo "🔍 Checking database connectivity at $DB_HOST:$DB_PORT..."
 
