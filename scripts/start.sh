@@ -13,7 +13,20 @@ fi
 
 # Apply database migrations
 echo "⏳ Waiting for database to be ready..."
-/usr/bin/wait-for-it.sh $DATABASE_HOST:$DATABASE_PORT -t 60 -- echo "✅ Database is ready!"
+# Parse DATABASE_URL to get host and port for wait-for-it.sh if not provided
+if [ -z "$DATABASE_HOST" ]; then
+  DATABASE_HOST=$(echo $DATABASE_URL | sed -e 's|.*@||' -e 's|:.*||' -e 's|/.*||')
+fi
+if [ -z "$DATABASE_PORT" ]; then
+  DATABASE_PORT=$(echo $DATABASE_URL | sed -e 's|.*:||' -e 's|/.*||')
+  # Default to 5432 if port parsing fails
+  case $DATABASE_PORT in
+    ''|*[!0-9]*) DATABASE_PORT=5432 ;;
+  esac
+fi
+
+echo "🔍 Checking connection to $DATABASE_HOST:$DATABASE_PORT..."
+/usr/bin/wait-for-it.sh $DATABASE_HOST:$DATABASE_PORT -t 60 -- echo "✅ Database is reachable!"
 
 echo "📦 Applying database migrations..."
 # Using npx to run prisma from local node_modules

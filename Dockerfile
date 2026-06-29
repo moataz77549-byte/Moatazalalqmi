@@ -1,6 +1,8 @@
 # Moataz AI - High Reliability Production Dockerfile
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl wget && wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -O /usr/bin/wait-for-it.sh && chmod +x /usr/bin/wait-for-it.sh
+RUN apk add --no-cache libc6-compat openssl wget && \
+    wget https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -O /usr/bin/wait-for-it.sh && \
+    chmod +x /usr/bin/wait-for-it.sh
 WORKDIR /app
 
 # Step 1: Install Dependencies
@@ -31,13 +33,13 @@ RUN adduser --system --uid 1001 moataz
 COPY --from=builder --chown=moataz:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=moataz:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=moataz:nodejs /app/public ./public
-COPY --from=builder --chown=moataz:nodejs /app/prisma ./prisma \
-    COPY --from=builder --chown=moataz:nodejs /app/node_modules/.prisma ./node_modules/.prisma \
-    COPY --from=builder --chown=moataz:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder --chown=moataz:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=moataz:nodejs /app/scripts/start.sh ./scripts/start.sh
 
 # Ensure prisma internal modules are present in the runner
-COPY --from=builder --chown=moataz:nodejs /app/node_modules ./node_modules
+# We copy only necessary parts of node_modules to keep image size small
+COPY --from=builder --chown=moataz:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=moataz:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
 USER moataz
 EXPOSE 3000
