@@ -12,7 +12,15 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limit by IP — 10 attempts per 15 minutes
     const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
-    const rateLimitResult = rateLimit(`login:${clientIp}`, 10, 15 * 60 * 1000);
+    
+    // Safety check for rateLimit function to avoid Internal Server Error if it fails
+    let rateLimitResult;
+    try {
+      rateLimitResult = rateLimit(`login:${clientIp}`, 10, 15 * 60 * 1000);
+    } catch (e) {
+      console.warn('Rate limit check failed, bypassing:', e);
+      rateLimitResult = { allowed: true };
+    }
 
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -21,7 +29,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    // Safely parse JSON body
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json(errorResponse('Invalid JSON body'), { status: 400 });
+    }
+
     const validation = loginSchema.safeParse(body);
 
     if (!validation.success) {
@@ -36,13 +51,14 @@ export async function POST(request: NextRequest) {
     // Find user by email
     const user = await db.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
-      await createAuditLog({
+      // Audit log should be non-blocking
+      createAuditLog({
         action: 'LOGIN_FAILED',
         resource: 'session',
         details: { email, reason: 'user_not_found' },
         ipAddress: clientIp,
         userAgent: request.headers.get('user-agent') || undefined,
-      });
+      }).catch(console.error);
 
       return NextResponse.json(
         errorResponse('Invalid email or password'),
@@ -53,14 +69,14 @@ export async function POST(request: NextRequest) {
     // Verify password
     const isValid = await verifyPassword(password, user.passwordHash);
     if (!isValid) {
-      await createAuditLog({
+      createAuditLog({
         userId: user.id,
         action: 'LOGIN_FAILED',
         resource: 'session',
         details: { email, reason: 'invalid_password' },
         ipAddress: clientIp,
         userAgent: request.headers.get('user-agent') || undefined,
-      });
+      }).catch(console.error);
 
       return NextResponse.json(
         errorResponse('Invalid email or password'),
@@ -90,14 +106,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Create audit log
-    await createAuditLog({
+    createAuditLog({
       userId: user.id,
       action: 'LOGIN',
       resource: 'session',
       resourceId: session.id,
       ipAddress: clientIp,
       userAgent,
-    });
+    }).catch(console.error);
 
     // Return user without passwordHash + session token
     const { passwordHash: _, ...userWithoutPassword } = user;
@@ -110,10 +126,15 @@ export async function POST(request: NextRequest) {
       }, 'Login successful'),
       { status: 200 }
     );
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    console.error('Login error details:', error);
+    // Return more helpful error message in production if it's a known database issue
+    const message = error.message?.includes('Prisma') 
+      ? 'Database connection error. Please check if your database is running.'
+      : 'Internal server error';
+      
     return NextResponse.json(
-      errorResponse('Internal server error'),
+      errorResponse(message),
       { status: 500 }
     );
   }
