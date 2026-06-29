@@ -2,33 +2,33 @@
 set -e
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Moataz AI — Zero-Dependency Offline Startup Script
+# Moataz AI — Ultimate Production Bootstrap Startup Script
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 echo "═══════════════════════════════════════"
 echo "  Moataz AI Platform — Production Startup"
 echo "═══════════════════════════════════════"
 
-# 1. Environment Validation
+# 1. Environment & Database Check
 if [ -z "$DATABASE_URL" ]; then
-  echo "⚠️ WARNING: DATABASE_URL is missing. Database features will be unavailable."
+  echo "⚠️ WARNING: DATABASE_URL is missing. Application will run in degraded mode."
 else
   # Auto-encode # if present for runtime stability
   if [[ "$DATABASE_URL" == *"#"* ]]; then
     export DATABASE_URL="${DATABASE_URL//#/%23}"
   fi
-  echo "✅ DATABASE_URL is configured."
+  echo "✅ DATABASE_URL detected."
+  
+  # Try to run migrations and seed (Bootstrap)
+  echo "⚙️ Initializing System Bootstrap..."
+  
+  # Run Prisma Seed (which now handles Admin, Roles, Providers, and Settings)
+  # We use npx tsx directly to ensure it uses the production node_modules
+  npx prisma db seed || echo "⚠️ Bootstrap seed had warnings, but continuing startup..."
 fi
 
-# 2. Database Status (Non-blocking)
-# We do not run prisma generate or migrate here.
-# Everything must have been pre-built during the Docker build stage.
-echo "ℹ️ Using pre-compiled Prisma client and build assets."
-echo "ℹ️ Skipping database wait-for-it check to ensure instant startup."
-
-# 3. Start Application
-# We start the application regardless of database status.
-# The application internal logic will handle connection retries or degraded mode.
+# 2. Final System Readiness
+echo "ℹ️ Using pre-compiled build assets."
 echo "🚀 Starting Moataz AI Server..."
 echo "═══════════════════════════════════════"
 
