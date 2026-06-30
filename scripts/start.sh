@@ -17,13 +17,14 @@ if [[ "$DATABASE_URL" == *"#"* ]]; then
 fi
 
 # Extract database host, port, and user from DATABASE_URL for pg_isready
-DB_HOST=$(echo $DATABASE_URL | sed -e 's/.*@//' -e 's/:.*//')
-DB_PORT=$(echo $DATABASE_URL | sed -e 's/.*://' -e 's/\/.*//')
-DB_USER=$(echo $DATABASE_URL | sed -e 's/postgresql:\/\///' -e 's/:.*//' -e 's/@.*//')
+DB_USER=$(echo $DATABASE_URL | sed -r 's/postgresql:\/\/([^:]+):.*@.*/\1/')
+DB_HOST=$(echo $DATABASE_URL | sed -r 's/postgresql:\/\/[^@]+@([^:]+):.*/\1/')
+DB_PORT=$(echo $DATABASE_URL | sed -r 's/postgresql:\/\/[^@]+@[^:]+:([0-9]+)\/.*$/\1/')
+DB_NAME=$(echo $DATABASE_URL | sed -r 's/postgresql:\/\/[^@]+@[^:]+:[0-9]+\/([^?]+).*/\1/')
 
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL database to be ready at $DB_HOST:$DB_PORT for user $DB_USER..."
-until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER; do
+until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME; do
   echo "PostgreSQL is unavailable - sleeping"
   sleep 5
 done
