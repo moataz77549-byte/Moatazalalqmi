@@ -8,7 +8,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=file:./db/custom.db
+      - DATABASE_URL=postgresql://user:password@postgres:5432/moataz_ai_db
       - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - REDIS_URL=redis://redis:6379
@@ -16,6 +16,7 @@ services:
     depends_on:
       - redis
       - qdrant
+      - postgres
     volumes:
       - app-data:/app/data
     restart: unless-stopped
@@ -24,6 +25,19 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: moataz-postgres
+    environment:
+      POSTGRES_DB: moataz_ai_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -87,3 +101,4 @@ volumes:
   minio-data:
   prometheus-data:
   grafana-data:
+  postgres-data:
