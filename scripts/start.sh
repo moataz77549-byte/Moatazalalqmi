@@ -26,7 +26,8 @@ DB_PORT=$(echo $DATABASE_URL | sed -r 's/postgresql:\/\/[^@]+@[^:]+:([0-9]+)\/.*
 DB_NAME=$(echo $DATABASE_URL | sed -r 's/postgresql:\/\/[^@]+@[^:]+:[0-9]+\/([^?]+).*/\1/')
 
 # Set PGPASSWORD for psql command
-PGPASSWORD="$DB_PASSWORD"
+PGPASSWORD=$(echo "$DB_PASSWORD" | sed 's/%/%%/g;s/\//%2F/g;s/:/%3A/g;s/@/%40/g;s/#/%23/g;s/\$/%24/g;s/&/%26/g;s/\+/%2B/g;s/=/%3D/g;s/?/%3F/g')
+
 
 echo "Debug: Extracted DB_USER=$DB_USER"
 echo "Debug: Extracted DB_HOST=$DB_HOST"
