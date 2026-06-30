@@ -1,6 +1,6 @@
 # Moataz AI - High Reliability Production Dockerfile
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl bash postgresql-client
+RUN apk add --no-cache libc6-compat openssl bash postgresql-client netcat-openbsd
 WORKDIR /app
 
 # Step 1: Install Dependencies
